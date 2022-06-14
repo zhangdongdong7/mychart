@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+{{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+{{- end }}
+  selector:
+    matchLabels:
+      {{- include "zlb-rd.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+    {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+        helm3.deploy/time: {{ now  }}
+    {{- end }}
+      labels:
+        {{- include "zlb-rd.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "zlb-rd.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+         - name: {{ .Release.Name }}-cm
+           configMap:
+            defaultMode: 420
+            name: {{ .Release.Name }}
+         {{- if .Values.volumes.enabled }}
+         - name: {{ .Release.Name }}
+           persistentVolumeClaim:
+             claimName: {{ .Release.Name }}
+         {{- end }}
+      containers:
+        - name: {{ .Release.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - '-c'
+                  - sleep 15
+          volumeMounts:
+             - name: {{ .Release.Name }}-cm
+               mountPath: /zlb/{{ .Values.env }}.yaml
+               subPath: {{ .Values.env }}.yaml
+             {{- if .Values.volumes.enabled }}
+             - name: {{ .Release.Name }}
+               mountPath: /zlb/data
+             {{- end}}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            timeoutSeconds: 2
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            timeoutSeconds: 3
+            initialDelaySeconds: 20
+          {{- if .Values.resources.enabled  }}
+          resources:
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }} 
+              memory: {{ .Values.resources.limits.memory }}
+            requests:
+              cpu: 300m
+              memory: 500M
+          {{- end }}
+          env:
+            - name: TZ
+              value: 'Asia/Shanghai'
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name   
+            - name: ENV
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+      restartPolicy: {{ .Values.restartPolicy }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
