@@ -29,10 +29,6 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       volumes:
-         - name: {{ .Release.Name }}-cm
-           configMap:
-            defaultMode: 420
-            name: {{ .Release.Name }}
          {{- if .Values.volumes.enabled }}
          - name: {{ .Release.Name }}
            persistentVolumeClaim:
@@ -52,9 +48,6 @@ spec:
                   - '-c'
                   - sleep 15
           volumeMounts:
-             - name: {{ .Release.Name }}-cm
-               mountPath: /zlb/{{ .Values.env }}.yaml
-               subPath: {{ .Values.env }}.yaml
              {{- if .Values.volumes.enabled }}
              - name: {{ .Release.Name }}
                mountPath: /zlb/data
